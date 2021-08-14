@@ -5,8 +5,10 @@ import os
 import time
 import logging
 import sys
+from campy.utils import QueueKeyboardInterrupt
 
-def OpenWriter(cam_params):
+def OpenWriter(cam_params, queue):
+	writing = False
 	folder_name = os.path.join(cam_params["videoFolder"], cam_params["cameraName"])
 	file_name = cam_params["videoFilename"]
 	full_file_name = os.path.join(folder_name, file_name)
@@ -47,8 +49,12 @@ def OpenWriter(cam_params):
 			elif cam_params["codec"] == 'h265':
 				codec = 'hevc_nvenc'
 			gpu_params = ['-r:v', str(cam_params["frameRate"]), # important to play nice with vsync '0'
-						'-preset', 'fast', # set to 'fast', 'llhp', or 'llhq' for h264 or hevc
-						'-qp', cam_params["quality"],
+						'-preset', 'slow', # set to 'fast', 'llhp', or 'llhq' for h264 or hevc
+						'-rc', 'vbr',
+						'-cq', cam_params["quality"],
+						'-qmin', cam_params["quality"],
+						'-qmax', cam_params["quality"],
+						'-b:v', '0M',
 						'-bf:v', '0',
 						'-vsync', '0',
 						'-2pass', '0',
@@ -81,8 +87,8 @@ def OpenWriter(cam_params):
 
 	# Initialize writer object (imageio-ffmpeg)
 	while(True):
+		#try:
 		try:
-			try:
 				writer = write_frames(
 					full_file_name,
 					size=(cam_params["frameWidth"], cam_params["frameHeight"]), # size [W,H]
@@ -97,36 +103,52 @@ def OpenWriter(cam_params):
 					output_params=gpu_params,
 					)
 				writer.send(None) # Initialize the generator
+				writing = True
 				break
-			except Exception as e:
+
+		except KeyboardInterrupt:
+				break
+
+		except Exception as e:
 				logging.error('Caught exception (campipe.py line 102): {}'.format(e))
 				time.sleep(0.1)
 
-		except KeyboardInterrupt:
-			break
+	# Initialize read queue object to signal interrupt
+	readQueue = {}
+	readQueue["queue"] = queue
+	readQueue["message"] = 'STOP'
 
-	return writer
+	return writer, writing, readQueue
 
-def WriteFrames(cam_params, writeQueue, stopQueue):
+def WriteFrames(cam_params, writeQueue, stopReadQueue, stopWriteQueue):
 	# Start ffmpeg video writer 
-	writer = OpenWriter(cam_params)
-	message = ''
+	writer, writing, readQueue = OpenWriter(cam_params, stopReadQueue)
 
-	# Write until interrupted or stop message received
-	while(True):
-		try:
-			if writeQueue:
-				message = writeQueue.popleft()
-				if not isinstance(message, str):
-					writer.send(message)
-				elif message=='STOP':
-					break
-			else:
-				time.sleep(0.001)
-		except KeyboardInterrupt:
-			stopQueue.append('STOP')
+	with QueueKeyboardInterrupt(readQueue):
+		# Write until interrupted or stop message received
+		while(writing):
+			try:
+				if writeQueue:
+					writer.send(writeQueue.popleft())
+				else:
+					# Once queue is depleted and grabber stops, then stop writing
+					if stopWriteQueue:
+						writing = False
+					# Otherwise continue writing
+					time.sleep(0.01)
+					#message = writeQueue.popleft()
+					#if not isinstance(message, str):
+				#		writer.send(message)
+				#	elif message=='STOP':
+				#		break
+				#else:
+				#	time.sleep(0.001)
+			except Exception as e:
+					pass
+		#	except KeyboardInterrupt:
+		#		stopQueue.append('STOP')
 
-	# Closing up...
-	print('Closing video writer for {}. Please wait...'.format(cam_params["cameraName"]))
-	time.sleep(1)
-	writer.close()
+		# Closing up...
+		print('Closing video writer for {}. Please wait...'.format(cam_params["cameraName"]))
+		writer.close()
+		time.sleep(1)

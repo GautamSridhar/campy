@@ -84,7 +84,7 @@ def GrabData(cam_params):
     return grabdata
 
 
-def GrabFrames(cam_params, device, writeQueue, dispQueue, stopQueue):
+def GrabFrames(cam_params, device, writeQueue, dispQueue, stopReadQueue, stopWriteQueue):
     # Import the cam module
     cam = ImportCam(cam_params)
 
@@ -108,23 +108,16 @@ def GrabFrames(cam_params, device, writeQueue, dispQueue, stopQueue):
 
     frameNumber = 0
     frameCount = 0
-    while grabbing:
-        if stopQueue:
-            writeQueue.append('STOP')
-            grabbing = False
-            cam.CloseCamera(cam_params, camera, grabdata)
-            break
+    while(grabbing):
+       # if stopQueue:
+        #    writeQueue.append('STOP')
+         #   grabbing = False
+          #  cam.CloseCamera(cam_params, camera, grabdata)
+           # break
         try:
             # Grab image from camera buffer if available
             grabResult = cam.GrabFrame(camera, frameNumber, grabTimeOutInMilliseconds)
-        except Exception as err:
-            print('No frames received for {} seconds!'.format(grabTimeOutInMilliseconds), err)
-            writeQueue.append('STOP')
-            grabbing = False
-            cam.CloseCamera(cam_params, camera, grabdata)
-            break
 
-        try:
             # Append numpy array to writeQueue for writer to append to file
             img = cam.GetImageArray(grabResult, cam_params)
             writeQueue.append(img)
@@ -148,39 +141,61 @@ def GrabFrames(cam_params, device, writeQueue, dispQueue, stopQueue):
                       .format(cam_params["cameraName"], frameCount, fps_count, int(round(timeElapsed))))
 
             cam.ReleaseFrame(grabResult)
-        except KeyboardInterrupt:
-            pass
+      #  except KeyboardInterrupt:
+        #    pass
+            if stopReadQueue: #or frameNumber >= grabdata["numImagesToGrab"]:
+                grabbing = False
+        except Exception as err:
+            print('No frames received for {} seconds!'.format(grabTimeOutInMilliseconds), err)
+            writeQueue.append('STOP')
+            grabbing = False
+            cam.CloseCamera(cam_params, camera, grabdata)
+            break
         except Exception as e:
-            print('Exception in unicam.py GrabFrames', e)
-            time.sleep(0.001)
-
+             print('Exception in unicam.py GrabFrames', e)
+             time.sleep(0.001)
+        except Exception:
+             time.sleep(0.001)
+    
+    # Close the camera, save metadata, and tell writer and display to close
+    #print('try')
+    
+    cam.CloseCamera(cam_params, camera, grabdata)
+   # print('try2')
+    SaveMetadata(cam_params, grabdata)
+  #  print('try3')
+    
+    #if not sys.platform=='win32' or not cam_params['cameraMake'] == 'basler':
+  #      dispQueue.append('STOP')
+    stopWriteQueue.append('STOP')
 
 def SaveMetadata(cam_params, grabdata):
     full_folder_name = os.path.join(cam_params["videoFolder"], cam_params["cameraName"])
-    # Zero timeStamps
-    timeFirstGrab = grabdata["timeStamp"][0]
-    # ToDo: can't remember?
-    grabdata["cameraTime"] = grabdata["timeStamp"].copy()
-    grabdata["timeStamp"] = [i - timeFirstGrab for i in grabdata["timeStamp"].copy()]
-    # Get the frame and time counts to save into metadata
-    frame_count = len(grabdata['frameNumber'])
-    time_count = grabdata['timeStamp'][-1]
-    fps_count = frame_count / time_count
-    print('{} saved {} frames at {} fps.'.format(cam_params["cameraName"], frame_count, fps_count))
+    
+    try:
+        # Zero timeStamps
+        timeFirstGrab = grabdata["timeStamp"][0]
+        # ToDo: can't remember?
+        grabdata["cameraTime"] = grabdata["timeStamp"].copy()
+        grabdata["timeStamp"] = [i - timeFirstGrab for i in grabdata["timeStamp"].copy()]
+        # Get the frame and time counts to save into metadata
+        frame_count = len(grabdata['frameNumber'])
+        time_count = grabdata['timeStamp'][-1]
+        fps_count = frame_count / time_count
+        print('{} saved {} frames at {} fps.'.format(cam_params["cameraName"], frame_count, fps_count))
 
-    while True:
+    
         meta = cam_params
-        try:
-            npy_filename = os.path.join(full_folder_name, 'frametimes.npy')
-            pd_filename = npy_filename[:-3] + '.csv'
-            x = np.array([grabdata['frameNumber'], grabdata["cameraTime"], grabdata['timeStamp']])
-            df = pd.DataFrame(data=x.T, columns=['frameNumber', 'cameraTime', 'timeStamp'])
-            df = df.convert_dtypes({'frameNumber': 'int'})
-            df.to_csv(pd_filename)
-            np.save(npy_filename, x)
+        
+        npy_filename = os.path.join(full_folder_name, 'frametimes.npy')
+        pd_filename = npy_filename[:-3] + '.csv'
+        x = np.array([grabdata['frameNumber'], grabdata["cameraTime"], grabdata['timeStamp']])
+        df = pd.DataFrame(data=x.T, columns=['frameNumber', 'cameraTime', 'timeStamp'])
+        df = df.convert_dtypes({'frameNumber': 'int'})
+        df.to_csv(pd_filename)
+        np.save(npy_filename, x)
 
-        except KeyboardInterrupt:
-            break
+    
 
         csv_filename = os.path.join(full_folder_name, 'metadata.csv')
         meta['totalFrames'] = len(grabdata['frameNumber'])
@@ -188,19 +203,21 @@ def SaveMetadata(cam_params, grabdata):
         keys = meta.keys()
         vals = meta.values()
 
-        try:
-            with open(csv_filename, 'w', newline='') as f:
-                w = csv.writer(f, delimiter=',', quoting=csv.QUOTE_ALL)
-                for row in meta.items():
+        
+        with open(csv_filename, 'w', newline='') as f:
+            w = csv.writer(f, delimiter=',', quoting=csv.QUOTE_ALL)
+            for row in meta.items():
+                if isinstance(row[1],(list,str,int,float)):
                     w.writerow(row)
-        except KeyboardInterrupt:
-            break
 
         print('Saved metadata.csv for {}'.format(cam_params['cameraName']))
-        break
+        
+    except Exception as e:
+        logging.error('Caught exception: {}'.format(e))
 
 
 def CloseSystems(params, systems):
+    print('Closing systems...')
     makes = GetMakeList(params)
     cam_params = {}
     for m in range(len(makes)):

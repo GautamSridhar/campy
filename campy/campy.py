@@ -312,7 +312,8 @@ def AcquireOneCamera(n_cam):
 
     # Initialize queues for video writer and stop message
     writeQueue = deque()
-    stopQueue = deque([], 1)
+    stopWriteQueue = deque([], 1)
+    stopReadQueue = deque([],1)
 
     # Start image window display thread
     dispQueue = deque([], 2)
@@ -330,11 +331,11 @@ def AcquireOneCamera(n_cam):
     threading.Thread(
         target=unicam.GrabFrames,
         daemon=True,
-        args=(cam_params, device, writeQueue, dispQueue, stopQueue,),
+        args=(cam_params, device, writeQueue, dispQueue, stopReadQueue, stopWriteQueue),
     ).start()
 
     # Start video file writer (main 'consumer' thread)
-    campipe.WriteFrames(cam_params, writeQueue, stopQueue)
+    campipe.WriteFrames(cam_params, writeQueue, stopReadQueue, stopWriteQueue)
 
     # Close the systems and devices properly
     unicam.CloseSystems(params, systems)
@@ -353,18 +354,23 @@ def AcquireOneCamera(n_cam):
 
 def Main():
     # Optionally, user can manually set path to find ffmpeg binary.
-    if params["ffmpegPath"]:
-        os.environ["IMAGEIO_FFMPEG_EXE"] = params["ffmpegPath"]
+    try:
+        if params["ffmpegPath"]:
+            os.environ["IMAGEIO_FFMPEG_EXE"] = params["ffmpegPath"]
 
-    if sys.platform == "win32":
-        pool = mp.Pool(processes=params['numCams'])
-        pool.map(AcquireOneCamera, range(0, params['numCams']))
+        if sys.platform == "win32":
+            pool = mp.Pool(processes=params['numCams'])
+            pool.map(AcquireOneCamera, range(0, params['numCams']))
 
-    elif sys.platform == "linux" or sys.platform == "linux2":
-        ctx = mp.get_context("spawn")  # for linux compatibility
-        pool = ctx.Pool(processes=params['numCams'])
-        p = pool.map_async(AcquireOneCamera, range(0, params['numCams']))
-        p.get()
+        elif sys.platform == "linux" or sys.platform == "linux2":
+            ctx = mp.get_context("spawn")  # for linux compatibility
+            pool = ctx.Pool(processes=params['numCams'])
+            p = pool.map_async(AcquireOneCamera, range(0, params['numCams']))
+            p.get()
+    except KeyboardInterrupt:
+        time.sleep(10)
+
+	
 
 
 parser = ArgumentParser(
