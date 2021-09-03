@@ -58,7 +58,9 @@ def OpenWriter(cam_params, queue):
 						'-bf:v', '0',
 						'-vsync', '0',
 						'-2pass', '0',
-						'-gpu', str(cam_params["gpuID"]),]
+						'-gpu', str(cam_params["gpuID"]),
+						'-f', 'segment',
+						'-segment_time', '1800']
 		elif cam_params["gpuMake"] == 'amd':
 			if pix_fmt_out == 'rgb0':
 				pix_fmt_out = 'yuv420p'
