@@ -88,7 +88,7 @@ def Main():
 
 
 # Open systems, creates global 'systems' and 'params' variables
-try:
-    systems, params = OpenSystems()
-except:
-    exit
+# try:
+systems, params = OpenSystems()
+# except:
+    # exit

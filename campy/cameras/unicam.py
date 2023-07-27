@@ -16,6 +16,8 @@ def ImportCam(make):
         from campy.cameras import flir as cam
     elif make == "emu":
         from campy.cameras import emu as cam
+    elif make == 'ximea':
+        from campy.cameras import ximea as cam
     else:
         print("Camera make is not supported by CamPy. Check config.", flush=True)
     return cam

@@ -6,7 +6,8 @@ import numpy as np
 import matplotlib as mpl
 
 warnings.filterwarnings("ignore")
-mpl.use("Qt5Agg")  # ignore qtapp warning...
+# mpl.use("Qt5Agg")  # ignore qtapp warning...
+mpl.use("Agg") # Suppress warning on Mac ?  
 import matplotlib.pyplot as plt
 
 

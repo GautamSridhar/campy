@@ -37,6 +37,9 @@ def DefaultParams():
     params["cameraGain"] = 0
     params["disableGamma"] = True
 
+    #ximea camera default parameters
+    params["imageFormat"] = 'XI_MONO8'
+
     # Compression default parameters
     params["ffmpegLogLevel"] = "quiet"
     params["ffmpegPath"] = "None"  # "/home/usr/Documents/ffmpeg/ffmpeg"
@@ -292,6 +295,12 @@ def ParseClargs(parser):
         dest="cameraGain",
         type=float,
         help="Intensity gain applied to each camera frame.",
+    )
+    parser.add_argument(
+        "--imageFormat",
+        dest="imageFormat",
+        type=float,
+        help="Image format of the output stream, currently supported for XIMEA cameras.",
     )
     parser.add_argument(
         "--disableGamma",
